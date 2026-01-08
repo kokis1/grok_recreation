@@ -32,13 +32,15 @@ def split_data(data: np.ndarray, ratio: float) -> tuple[np.ndarray: 4]:
    training = data[:length]
    testing = data[length:]
 
-   dtrain = training[:, :2]
+   dtrain = training[:, :2] / 99
    ltrain = training[:, 2]
 
-   dtest = testing[:, :2]
+   dtest = testing[:, :2] / 99
    ltest = testing[:, 2]
+   print(ltrain.shape)
+   print(ltest.shape)
 
-   return dtrain, ltrain, dtest, ltest
+   return torch.FloatTensor(dtrain), torch.LongTensor(ltrain), torch.FloatTensor(dtest), torch.LongTensor(ltest)
 
 def training(model, optimizer, criterion, num_epochs, train_loader, test_loader):
    
@@ -49,31 +51,78 @@ def training(model, optimizer, criterion, num_epochs, train_loader, test_loader)
                                "test correct":[0]})
    
    train_losses = []
-   train_corrects = []
+   train_accuracies = []
    
    test_losses = []
-   test_corrects = []
-   
-   
+   test_accuracies = []
+
+      # Diagnostic test
+   print("\n=== DIAGNOSTIC TEST ===")
+   model.eval()
+   with torch.no_grad():
+      # Get one batch
+      sample_inputs, sample_labels = next(iter(train_loader))
+      
+      print(f"Input shape: {sample_inputs.shape}")
+      print(f"Input dtype: {sample_inputs.dtype}")
+      print(f"Sample input values: {sample_inputs[0]}")
+      
+      print(f"\nLabel shape: {sample_labels.shape}")
+      print(f"Label dtype: {sample_labels.dtype}")
+      print(f"Sample labels (first 10): {sample_labels[:10]}")
+      print(f"Label range: {sample_labels.min()} to {sample_labels.max()}")
+      
+      # Forward pass
+      outputs = model(sample_inputs)
+      print(f"\nOutput shape: {outputs.shape}")
+      print(f"Sample output (first 10 values): {outputs[0, :10]}")
+      
+      # Check predictions
+      preds = torch.argmax(outputs, dim=1)
+      print(f"\nPredictions (first 10): {preds[:10]}")
+      print(f"True labels (first 10): {sample_labels[:10]}")
+      
+      # Check loss
+      loss = criterion(outputs, sample_labels)
+      print(f"\nInitial loss: {loss.item()}")
+      print(f"Expected random loss: ~{np.log(199):.2f}")
+
+   print("=== END DIAGNOSTIC ===\n")
+
    for epoch in range(num_epochs):
       model.train()
       train_loss = 0
       train_correct = 0
+      train_total = 0
 
       for inputs, labels in train_loader:
+
+         if epoch == 0:
+            print(f"Batch loss: {loss.item():.4f}")
+
          optimizer.zero_grad()
          outputs = model(inputs)
          loss = criterion(outputs, labels)
          loss.backward()
+         if epoch == 0:
+            grad_norms = []
+            for name, param in model.named_parameters():
+               if param.grad is not None:
+                     grad_norms.append(param.grad.abs().mean().item())
+            print(f"Batch loss: {loss.item():.4f}, Avg grad magnitude: {np.mean(grad_norms):.6f}")
          optimizer.step()
-
          train_loss += loss.item()
          preds = torch.argmax(outputs, dim=1)
          train_correct += (preds == labels).sum().item()
+         train_total += labels.size(0)
+      
+      mean_train_loss = train_loss / len(train_loader)
+      train_accuracy = train_correct / train_total
       
       model.eval()
       test_loss = 0
       test_correct = 0
+      test_total = 0
       with torch.no_grad():
         for inputs, labels in test_loader:
             outputs = model(inputs)
@@ -82,21 +131,32 @@ def training(model, optimizer, criterion, num_epochs, train_loader, test_loader)
             test_loss += loss.item()
             preds = torch.argmax(outputs, dim=1)
             test_correct += (preds == labels).sum().item()
-      train_corrects.append(train_correct)
-      test_corrects.append(test_correct)
+            test_total += labels.size(0)
+
+      mean_test_loss = test_loss / len(test_loader)
+      test_accuracy = test_correct / test_total
       
-      train_losses.append(train_loss)
-      test_losses.append(test_loss)
+      train_accuracies.append(train_accuracy)
+      test_accuracies.append(test_accuracy)
+      
+      train_losses.append(mean_train_loss)
+      test_losses.append(mean_test_loss)
       
       if epoch % 50 == 0:
-         print(epoch, train_loss, test_loss)
+         print(epoch, train_accuracy, test_accuracy)
    
    metrics = pd.DataFrame({"Epoch":np.arange(num_epochs), 
                               "train loss":train_losses, 
-                              "train correct":train_corrects, 
+                              "train accuracy":train_accuracies, 
                               "test loss":test_losses, 
-                              "test correct":test_corrects})
+                              "test accuracy":test_accuracies})
    return metrics
+
+# Reinitialize weights
+def init_weights(m):
+    if isinstance(m, nn.Linear):
+        torch.nn.init.xavier_uniform_(m.weight)
+        m.bias.data.fill_(0.01)
 
 def main(data_filepath="../datasets/dataset_addition.csv", results_filepath="../results/metrics_addition.csv"):
    
@@ -104,7 +164,7 @@ def main(data_filepath="../datasets/dataset_addition.csv", results_filepath="../
    data = pd.read_csv(data_filepath).to_numpy()
    
    # splits the dataset into a trianing and testing pair
-   training_ratio = 0.3
+   training_ratio = 0.5
    dtrain, ltrain, dtest, ltest = split_data(data, training_ratio)
 
 
@@ -112,30 +172,30 @@ def main(data_filepath="../datasets/dataset_addition.csv", results_filepath="../
    input_size = 2
    output_size = 199
    hidden_size = 128
-   decay_rate = 100
-   num_epochs = 10000
+   decay_rate = 1
+   learning_rate = 0.001
+   num_epochs = 1000
 
 
    # data loaders for the training loop
    train_dataset = TensorDataset(
-    torch.FloatTensor(dtrain),
-    torch.LongTensor(ltrain)  # LongTensor for class indices
+    dtrain, ltrain  # LongTensor for class indices
 )
    data_loader = DataLoader(train_dataset, batch_size=512, shuffle=True)
 
    # Same for validation
    val_dataset = TensorDataset(
-      torch.FloatTensor(dtest),
-      torch.LongTensor(ltest)
+      dtest, ltest
    )
    test_loader = DataLoader(val_dataset, batch_size=512, shuffle=False)
 
    # initialises the model
    model = GrokNN(input_size, hidden_size, output_size)
+   model.apply(init_weights)
 
    # specifies the loss and optimiser functions
    loss = nn.CrossEntropyLoss()
-   optimizer = optim.Adam(model.parameters(), weight_decay=decay_rate)
+   optimizer = optim.Adam(model.parameters(), weight_decay=decay_rate, lr=learning_rate)
 
    # performs the training loop and saves the results as a pandas DataFrame
    metrics = training(model, optimizer, loss, num_epochs, data_loader, test_loader)
