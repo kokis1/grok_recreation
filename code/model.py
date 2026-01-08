@@ -101,8 +101,6 @@ def training(model, optimizer, criterion, num_epochs, train_loader, test_loader)
 def main(data_filepath="../datasets/dataset_addition.csv", results_filepath="../results/metrics_addition.csv"):
    
    # reads the data and prepares to send the results to the specified location
-   data_filepath = "../datasets/dataset_addition.csv"
-   results_filepath = "../results/metrics_addition.csv"
    data = pd.read_csv(data_filepath).to_numpy()
    
    # splits the dataset into a trianing and testing pair
@@ -115,7 +113,7 @@ def main(data_filepath="../datasets/dataset_addition.csv", results_filepath="../
    output_size = 199
    hidden_size = 128
    decay_rate = 0.05
-   num_epochs = 1000
+   num_epochs = 10000
 
 
    # data loaders for the training loop
