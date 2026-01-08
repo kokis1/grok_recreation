@@ -81,12 +81,11 @@ def training(model, optimizer, criterion, num_epochs, train_loader, test_loader)
             test_loss += loss.item()
             preds = torch.argmax(outputs, dim=1)
             test_correct += (preds == labels).sum().item()
-      
       train_corrects.append(train_correct)
       test_corrects.append(test_correct)
       
-      train_losses.append(train_losses)
-      test_losses.append(test_losses)
+      train_losses.append(train_loss)
+      test_losses.append(test_loss)
       
       if epoch+1 % 50 == 0:
          print(epoch, train_loss, test_loss)
@@ -110,7 +109,7 @@ def main():
    output_size = 199
    hidden_size = 128
    decay_rate = 0.05
-   num_epochs = 1000
+   num_epochs = 10
 
 
    train_dataset = TensorDataset(
