@@ -112,7 +112,7 @@ def main(data_filepath="../datasets/dataset_addition.csv", results_filepath="../
    input_size = 2
    output_size = 199
    hidden_size = 128
-   decay_rate = 0.05
+   decay_rate = 100
    num_epochs = 10000
 
 
