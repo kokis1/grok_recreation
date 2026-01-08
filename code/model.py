@@ -88,7 +88,7 @@ def training(model, optimizer, criterion, num_epochs, train_loader, test_loader)
       train_losses.append(train_loss)
       test_losses.append(test_loss)
       
-      if epoch+1 % 50 == 0:
+      if epoch % 50 == 0:
          print(epoch, train_loss, test_loss)
    
    metrics = pd.DataFrame({"Epoch":np.arange(num_epochs), 
