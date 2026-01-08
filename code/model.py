@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 import torch
+import sys
 
 class GrokNN(nn.Module):
    def __init__(self, input_size, hidden_size, output_size):
@@ -97,21 +98,27 @@ def training(model, optimizer, criterion, num_epochs, train_loader, test_loader)
                               "test correct":test_corrects})
    return metrics
 
-def main():
+def main(data_filepath="../datasets/dataset_addition.csv", results_filepath="../results/metrics_addition.csv"):
+   
+   # reads the data and prepares to send the results to the specified location
    data_filepath = "../datasets/dataset_addition.csv"
    results_filepath = "../results/metrics_addition.csv"
    data = pd.read_csv(data_filepath).to_numpy()
-   training_ratio = 0.3
    
+   # splits the dataset into a trianing and testing pair
+   training_ratio = 0.3
    dtrain, ltrain, dtest, ltest = split_data(data, training_ratio)
 
+
+   # parameters for the model
    input_size = 2
    output_size = 199
    hidden_size = 128
    decay_rate = 0.05
-   num_epochs = 10
+   num_epochs = 1000
 
 
+   # data loaders for the training loop
    train_dataset = TensorDataset(
     torch.FloatTensor(dtrain),
     torch.LongTensor(ltrain)  # LongTensor for class indices
@@ -125,14 +132,25 @@ def main():
    )
    test_loader = DataLoader(val_dataset, batch_size=512, shuffle=False)
 
+   # initialises the model
    model = GrokNN(input_size, hidden_size, output_size)
 
+   # specifies the loss and optimiser functions
    loss = nn.CrossEntropyLoss()
    optimizer = optim.Adam(model.parameters(), weight_decay=decay_rate)
 
+   # performs the training loop and saves the results as a pandas DataFrame
    metrics = training(model, optimizer, loss, num_epochs, data_loader, test_loader)
    
+   # writes the results to a csv file
    metrics.to_csv(results_filepath, index=False, index_label=False)
 
+
+
 if __name__ == "__main__":
-   main()
+   if len(sys.argv) >= 2:
+      data_filepath = sys.argv[-2]
+      results_filepath = sys.argv[-1]
+      main(data_filepath, results_filepath)
+   else:
+      main()
