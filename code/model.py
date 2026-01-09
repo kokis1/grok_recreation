@@ -33,12 +33,10 @@ def split_data(data: np.ndarray, ratio: float) -> tuple[np.ndarray: 4]:
    testing = data[length:]
 
    dtrain = training[:, :2] / 99
-   ltrain = training[:, 2]
+   ltrain = training[:, 2].astype(np.int64)
 
    dtest = testing[:, :2] / 99
-   ltest = testing[:, 2]
-   print(ltrain.shape)
-   print(ltest.shape)
+   ltest = testing[:, 2].astype(np.int64)
 
    return torch.FloatTensor(dtrain), torch.LongTensor(ltrain), torch.FloatTensor(dtest), torch.LongTensor(ltest)
 
@@ -89,6 +87,8 @@ def training(model, optimizer, criterion, num_epochs, train_loader, test_loader)
 
    print("=== END DIAGNOSTIC ===\n")
 
+   print("Epoch | train accuracy | test accuracy")
+
    for epoch in range(num_epochs):
       model.train()
       train_loss = 0
@@ -96,21 +96,12 @@ def training(model, optimizer, criterion, num_epochs, train_loader, test_loader)
       train_total = 0
 
       for inputs, labels in train_loader:
-
-         if epoch == 0:
-            print(f"Batch loss: {loss.item():.4f}")
-
          optimizer.zero_grad()
          outputs = model(inputs)
          loss = criterion(outputs, labels)
          loss.backward()
-         if epoch == 0:
-            grad_norms = []
-            for name, param in model.named_parameters():
-               if param.grad is not None:
-                     grad_norms.append(param.grad.abs().mean().item())
-            print(f"Batch loss: {loss.item():.4f}, Avg grad magnitude: {np.mean(grad_norms):.6f}")
          optimizer.step()
+         
          train_loss += loss.item()
          preds = torch.argmax(outputs, dim=1)
          train_correct += (preds == labels).sum().item()
@@ -143,7 +134,7 @@ def training(model, optimizer, criterion, num_epochs, train_loader, test_loader)
       test_losses.append(mean_test_loss)
       
       if epoch % 50 == 0:
-         print(epoch, train_accuracy, test_accuracy)
+         print(f"{epoch} | {train_accuracy} | {test_accuracy}")
    
    metrics = pd.DataFrame({"Epoch":np.arange(num_epochs), 
                               "train loss":train_losses, 
@@ -164,7 +155,7 @@ def main(data_filepath="../datasets/dataset_addition.csv", results_filepath="../
    data = pd.read_csv(data_filepath).to_numpy()
    
    # splits the dataset into a trianing and testing pair
-   training_ratio = 0.5
+   training_ratio = 0.2
    dtrain, ltrain, dtest, ltest = split_data(data, training_ratio)
 
 
@@ -172,8 +163,8 @@ def main(data_filepath="../datasets/dataset_addition.csv", results_filepath="../
    input_size = 2
    output_size = 199
    hidden_size = 128
-   decay_rate = 1
-   learning_rate = 0.001
+   decay_rate = 0.01
+   learning_rate = 0.01
    num_epochs = 1000
 
 
