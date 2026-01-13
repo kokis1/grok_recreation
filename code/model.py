@@ -1,212 +1,108 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
+import argparse
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import TensorDataset, DataLoader
 import torch
-import argparse
-
-class GrokNN(nn.Module):
-   def __init__(self, input_size, hidden_size, output_size):
-      super().__init__()
-
-      self.dense_1 = nn.Linear(input_size, hidden_size)  # First layer
-      self.dense_2 = nn.Linear(hidden_size, hidden_size)  # Second hidden layer
-      self.dense_3 = nn.Linear(hidden_size, output_size)  # Output layer
-      self.relu = nn.ReLU()  # Activation function
-   
-   def forward(self, x):
-      x = self.dense_1(x)  # Pass through first layer
-      x = self.relu(x)  # Apply activation
-      x = self.dense_2(x)  # Second layer
-      x = self.relu(x)  # Activation
-      x = self.dense_3(x)  # Output layer
-      return x
 
 
+class simpleNN(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(simpleNN, self).__init__()
+        self.fc1 = nn.Linear(input_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc3 = nn.Linear(hidden_size, output_size)
+        self.relu = nn.ReLU()
 
-def split_data(data: np.ndarray, ratio: float) -> tuple[np.ndarray: 4]:
-   # permutes the data
-   data = np.random.permutation(data)
-   length = int(data.shape[0] * ratio)
-   training = data[:length]
-   testing = data[length:]
+    def forward(self, x):
+        out = self.fc1(x)
+        out = self.relu(out)
+        out = self.fc2(x)
+        out = self.relu(out)
+        out = self.fc3(out)
+        return out
 
-   dtrain = training[:, :2] / 99
-   ltrain = training[:, 2].astype(np.int64)
+def split_data(data, training_ratio=0.2):
+   data = data.sample(frac=1).reset_index(drop=True)  # shuffle data
+   num_train = int(len(data) * training_ratio)
+   dtrain = data.iloc[:num_train, :-1].values
+   ltrain = data.iloc[:num_train, -1].values
+   dval = data.iloc[num_train:, :-1].values
+   lval = data.iloc[num_train:, -1].values
+   return dtrain, ltrain, dval, lval
 
-   dtest = testing[:, :2] / 99
-   ltest = testing[:, 2].astype(np.int64)
 
-   return torch.FloatTensor(dtrain), torch.LongTensor(ltrain), torch.FloatTensor(dtest), torch.LongTensor(ltest)
+def train(model, criterion, optimizer, data, num_epochs, training_ratio):
+   dtrain, ltrain, dval, lval = split_data(data, training_ratio)
+   dtrain = torch.tensor(dtrain, dtype=torch.float32)
+   ltrain = torch.tensor(ltrain, dtype=torch.float32)
+   dval = torch.tensor(dval, dtype=torch.float32)
+   lval = torch.tensor(lval, dtype=torch.float32)
 
-def training(model, optimizer, criterion, num_epochs, train_loader, test_loader):
-   
-   metrics = pd.DataFrame({"Epoch":[0], 
-                               "train loss":[0], 
-                               "train correct":[0], 
-                               "test loss":[0], 
-                               "test correct":[0]})
-   
-   train_losses = []
-   train_accuracies = []
-   
-   test_losses = []
-   test_accuracies = []
-
-      # Diagnostic test
-   print("\n=== DIAGNOSTIC TEST ===")
-   model.eval()
-   with torch.no_grad():
-      # Get one batch
-      sample_inputs, sample_labels = next(iter(train_loader))
-      
-      print(f"Input shape: {sample_inputs.shape}")
-      print(f"Input dtype: {sample_inputs.dtype}")
-      print(f"Sample input values: {sample_inputs[0]}")
-      
-      print(f"\nLabel shape: {sample_labels.shape}")
-      print(f"Label dtype: {sample_labels.dtype}")
-      print(f"Sample labels (first 10): {sample_labels[:10]}")
-      print(f"Label range: {sample_labels.min()} to {sample_labels.max()}")
-      
-      # Forward pass
-      outputs = model(sample_inputs)
-      print(f"\nOutput shape: {outputs.shape}")
-      print(f"Sample output (first 10 values): {outputs[0, :10]}")
-      
-      # Check predictions
-      preds = torch.argmax(outputs, dim=1)
-      print(f"\nPredictions (first 10): {preds[:10]}")
-      print(f"True labels (first 10): {sample_labels[:10]}")
-      
-      # Check loss
-      loss = criterion(outputs, sample_labels)
-      print(f"\nInitial loss: {loss.item()}")
-      print(f"Expected random loss: ~{np.log(199):.2f}")
-
-   print("=== END DIAGNOSTIC ===\n")
-
-   print("Epoch | train accuracy | test accuracy")
-
+   metrics = {"train_loss": [], "val_loss": [], "train_accuracy": [], "val_accuracy": []}
    for epoch in range(num_epochs):
+      
+      # performs one step of backpropagation
       model.train()
-      train_loss = 0
-      train_correct = 0
-      train_total = 0
+      optimizer.zero_grad()
+      outputs = model(dtrain)
+      loss = criterion(outputs.squeeze(), ltrain)
+      loss.backward()
+      optimizer.step()
+      
+      # evaluates the model on training data
+      train_loss = loss.item()
+      predictions = outputs.argmax(dim=1)
+      correct = (predictions == ltrain).sum().item()
+      train_accuracy = correct / ltrain.size(0)
 
-      for inputs, labels in train_loader:
-         optimizer.zero_grad()
-         outputs = model(inputs)
-         loss = criterion(outputs, labels)
-         loss.backward()
-         optimizer.step()
-         
-         train_loss += loss.item()
-         preds = torch.argmax(outputs, dim=1)
-         train_correct += (preds == labels).sum().item()
-         train_total += labels.size(0)
-      
-      mean_train_loss = train_loss / len(train_loader)
-      train_accuracy = train_correct / train_total
-      
+      # evaluates the model on validation data
       model.eval()
-      test_loss = 0
-      test_correct = 0
-      test_total = 0
       with torch.no_grad():
-        for inputs, labels in test_loader:
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            
-            test_loss += loss.item()
-            preds = torch.argmax(outputs, dim=1)
-            test_correct += (preds == labels).sum().item()
-            test_total += labels.size(0)
+         val_outputs = model(dval)
+         val_loss = criterion(val_outputs.squeeze(), lval).item()
+         val_predictions = val_outputs.argmax(dim=1)
+         val_correct = (val_predictions == lval).sum().item()
+         val_accuracy = val_correct / lval.size(0)
 
-      mean_test_loss = test_loss / len(test_loader)
-      test_accuracy = test_correct / test_total
-      
-      train_accuracies.append(train_accuracy)
-      test_accuracies.append(test_accuracy)
-      
-      train_losses.append(mean_train_loss)
-      test_losses.append(mean_test_loss)
-      
-      if epoch % 50 == 0:
-         print(f"{epoch} | {train_accuracy} | {test_accuracy}")
-   
-   metrics = pd.DataFrame({"Epoch":np.arange(num_epochs), 
-                              "train loss":train_losses, 
-                              "train accuracy":train_accuracies, 
-                              "test loss":test_losses, 
-                              "test accuracy":test_accuracies})
-   return metrics
+      metrics["train_loss"].append(train_loss)
+      metrics["val_loss"].append(val_loss)
+      metrics["train_accuracy"].append(train_accuracy)
+      metrics["val_accuracy"].append(val_accuracy)
 
-# Reinitialize weights
-def init_weights(m):
-    if isinstance(m, nn.Linear):
-        torch.nn.init.xavier_uniform_(m.weight)
-        m.bias.data.fill_(0.01)
-
+      if (epoch+1) % 10 == 0:
+         print(f'Epoch [{epoch+1}/{num_epochs}], Train Accuracy: {train_accuracy:.4f}, Val Accuracy: {val_accuracy:.4f}')
+      
+      return pd.DataFrame(metrics)
 def main():
+      parser = argparse.ArgumentParser(description="Train a simple neural network.")
+      parser.add_argument("--hidden_size", type=int, default=128, help="Size of the hidden layer")
+      parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate for the optimizer")
+      parser.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
+      parser.add_argument("--data_path", type=str, default="../datasets/dataset_addition.csv", help="Path to the training data")
+      parser.add_argument("--output_file", type=str, default="../results/metrics.csv", help="File to save the trained model")
+      parser.add_argument("--decay_rate", type=float, default=0.01, help="Size of the input layer")
+      parser.add_argument("--training_ratio", type=float, default=0.2, help="Ratio of training data to total data")
+      args = parser.parse_args()
 
-   parser = argparse.ArgumentParser(description="Train GrokNN model.")
-   parser.add_argument("--data_filepath", default="../datasets/dataset_addition.csv", type=str, help="Path to the input CSV data file.")
-   parser.add_argument("--results_filepath", default="../results/metrics.csv", type=str, help="Path to save the output CSV results file.")
-   parser.add_argument("--decay_rate", default=0.01, type=float, help="How fast the model forgets its weights.")
-   parser.add_argument("--learning_rate", default=0.01, type=float, help="How fast the model learns.")
-   parser.add_argument("--num_epochs", default=500, type=int, help="How many epochs to train for.")
-   parser.add_argument("--train_ratio", default=0.3, type=float, help="Proportion of the dataset used for training.")
-   args = parser.parse_args()
-
-   data_filepath = args.data_filepath
-   results_filepath = args.results_filepath
-   decay_rate = args.decay_rate
-   learning_rate = args.learning_rate
-   num_epochs = args.num_epochs
-   training_ratio = args.train_ratio
-
-   # reads the data and prepares to send the results to the specified location
-   data = pd.read_csv(data_filepath).to_numpy()
+      # model parameters
+      input_size = 2
+      output_size = 199
+      hidden_size = args.hidden_size
    
-   # splits the dataset into a trianing and testing pair
-   dtrain, ltrain, dtest, ltest = split_data(data, training_ratio)
+      model = simpleNN(input_size, hidden_size, output_size)
+      criterion = nn.MSELoss()
+      optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.decay_rate)
 
+      data = pd.read_csv(args.data_path)
 
-   # parameters for the model
-   input_size = 2
-   output_size = 199
-   hidden_size = 128
+      metrics = train(model, criterion, optimizer, data, args.num_epochs, args.training_ratio)
 
-
-   # data loaders for the training loop
-   train_dataset = TensorDataset(
-    dtrain, ltrain  # LongTensor for class indices
-)
-   data_loader = DataLoader(train_dataset, batch_size=512, shuffle=True)
-
-   # Same for validation
-   val_dataset = TensorDataset(
-      dtest, ltest
-   )
-   test_loader = DataLoader(val_dataset, batch_size=512, shuffle=False)
-
-   # initialises the model
-   model = GrokNN(input_size, hidden_size, output_size)
-   model.apply(init_weights)
-
-   # specifies the loss and optimiser functions
-   loss = nn.CrossEntropyLoss()
-   optimizer = optim.Adam(model.parameters(), weight_decay=decay_rate, lr=learning_rate)
-
-   # performs the training loop and saves the results as a pandas DataFrame
-   metrics = training(model, optimizer, loss, num_epochs, data_loader, test_loader)
+      metrics.to_csv(args.output_file, index=False)
    
-   # writes the results to a csv file
-   metrics.to_csv(results_filepath, index=False, index_label=False)
-
-
+      print("Model initialized with the following parameters:")
+      print(f"Input Size: {args.input_size}, Hidden Size: {args.hidden_size}, Output Size: {args.output_size}")
+      print(f"Learning Rate: {args.learning_rate}")
 
 if __name__ == "__main__":
-      main()
+   main()
