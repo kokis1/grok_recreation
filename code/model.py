@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 import torch
-import sys
+import argparse
 
 class GrokNN(nn.Module):
    def __init__(self, input_size, hidden_size, output_size):
@@ -149,13 +149,28 @@ def init_weights(m):
         torch.nn.init.xavier_uniform_(m.weight)
         m.bias.data.fill_(0.01)
 
-def main(data_filepath="../datasets/dataset_addition.csv", results_filepath="../results/metrics_addition.csv"):
-   
+def main():
+
+   parser = argparse.ArgumentParser(description="Train GrokNN model.")
+   parser.add_argument("--data_filepath", default="../datasets/dataset_addition.csv", type=str, help="Path to the input CSV data file.")
+   parser.add_argument("--results_filepath", default="../results/metrics.csv", type=str, help="Path to save the output CSV results file.")
+   parser.add_argument("--decay_rate", default=0.01, type=float, help="How fast the model forgets its weights.")
+   parser.add_argument("--learning_rate", default=0.01, type=float, help="How fast the model learns.")
+   parser.add_argument("--num_epochs", default=500, type=int, help="How many epochs to train for.")
+   parser.add_argument("--train_ratio", default=0.3, type=float, help="Proportion of the dataset used for training.")
+   args = parser.parse_args()
+
+   data_filepath = args.data_filepath
+   results_filepath = args.results_filepath
+   decay_rate = args.decay_rate
+   learning_rate = args.learning_rate
+   num_epochs = args.num_epochs
+   training_ratio = args.train_ratio
+
    # reads the data and prepares to send the results to the specified location
    data = pd.read_csv(data_filepath).to_numpy()
    
    # splits the dataset into a trianing and testing pair
-   training_ratio = 0.2
    dtrain, ltrain, dtest, ltest = split_data(data, training_ratio)
 
 
@@ -163,9 +178,6 @@ def main(data_filepath="../datasets/dataset_addition.csv", results_filepath="../
    input_size = 2
    output_size = 199
    hidden_size = 128
-   decay_rate = 0.01
-   learning_rate = 0.01
-   num_epochs = 1000
 
 
    # data loaders for the training loop
@@ -197,9 +209,4 @@ def main(data_filepath="../datasets/dataset_addition.csv", results_filepath="../
 
 
 if __name__ == "__main__":
-   if len(sys.argv) >= 2:
-      data_filepath = sys.argv[-2]
-      results_filepath = sys.argv[-1]
-      main(data_filepath, results_filepath)
-   else:
       main()
