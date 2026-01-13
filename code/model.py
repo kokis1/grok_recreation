@@ -74,35 +74,32 @@ def train(model, criterion, optimizer, data, num_epochs, training_ratio):
          print(f'Epoch [{epoch+1}/{num_epochs}], Train Accuracy: {train_accuracy:.4f}, Val Accuracy: {val_accuracy:.4f}')
       
       return pd.DataFrame(metrics)
-def main():
-      parser = argparse.ArgumentParser(description="Train a simple neural network.")
-      parser.add_argument("--hidden_size", type=int, default=128, help="Size of the hidden layer")
-      parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate for the optimizer")
-      parser.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
-      parser.add_argument("--data_path", type=str, default="../datasets/dataset_addition.csv", help="Path to the training data")
-      parser.add_argument("--output_file", type=str, default="../results/metrics.csv", help="File to save the trained model")
-      parser.add_argument("--decay_rate", type=float, default=0.01, help="Size of the input layer")
-      parser.add_argument("--training_ratio", type=float, default=0.2, help="Ratio of training data to total data")
-      args = parser.parse_args()
-
+def main(arguments):
       # model parameters
       input_size = 2
       output_size = 199
-      hidden_size = args.hidden_size
+      hidden_size = arguments.hidden_size
    
       model = simpleNN(input_size, hidden_size, output_size)
       criterion = nn.MSELoss()
-      optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.decay_rate)
+      optimizer = optim.Adam(model.parameters(), lr=arguments.learning_rate, weight_decay=arguments.decay_rate)
 
-      data = pd.read_csv(args.data_path)
-
-      metrics = train(model, criterion, optimizer, data, args.num_epochs, args.training_ratio)
-
-      metrics.to_csv(args.output_file, index=False)
-   
       print("Model initialized with the following parameters:")
-      print(f"Input Size: {args.input_size}, Hidden Size: {args.hidden_size}, Output Size: {args.output_size}")
-      print(f"Learning Rate: {args.learning_rate}")
+      print(f"Input Size: {input_size}, Hidden Size: {hidden_size}, Output Size: {output_size}")
+      print(f"Learning Rate: {arguments.learning_rate}")
+
+      data = pd.read_csv(arguments.data_path)
+      metrics = train(model, criterion, optimizer, data, arguments.num_epochs, arguments.training_ratio)
+      metrics.to_csv(arguments.output_file, index=False)
 
 if __name__ == "__main__":
-   main()
+   parser = argparse.ArgumentParser(description="Train a simple neural network.")
+   parser.add_argument("--hidden_size", type=int, default=128, help="Size of the hidden layer")
+   parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate for the optimizer")
+   parser.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
+   parser.add_argument("--data_path", type=str, default="../datasets/dataset_addition.csv", help="Path to the training data")
+   parser.add_argument("--output_file", type=str, default="../results/metrics.csv", help="File to save the trained model")
+   parser.add_argument("--decay_rate", type=float, default=0.01, help="Size of the input layer")
+   parser.add_argument("--training_ratio", type=float, default=0.2, help="Ratio of training data to total data")
+   arguments = parser.parse_args()
+   main(arguments)
