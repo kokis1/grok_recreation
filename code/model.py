@@ -7,20 +7,20 @@ import torch
 
 
 class simpleNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
+   def __init__(self, input_size, hidden_size, output_size):
         super(simpleNN, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, output_size)
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        out = self.fc1(x)
-        out = self.relu(out)
-        out = self.fc2(x)
-        out = self.relu(out)
-        out = self.fc3(out)
-        return out
+        self.flatten = nn.Flatten()
+        self.linear_relu_stack = nn.Sequential(
+            nn.Linear(input_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, output_size))
+   
+   def forward(self, x):
+      x = self.flatten(x)
+      logits = self.linear_relu_stack(x)
+      return logits
 
 def split_data(data, training_ratio=0.2):
    data = data.sample(frac=1).reset_index(drop=True)  # shuffle data
@@ -32,56 +32,55 @@ def split_data(data, training_ratio=0.2):
    return dtrain, ltrain, dval, lval
 
 
-def train(model, criterion, optimizer, data, num_epochs, training_ratio):
-   dtrain, ltrain, dval, lval = split_data(data, training_ratio)
-   dtrain = torch.tensor(dtrain, dtype=torch.float32)
-   ltrain = torch.tensor(ltrain, dtype=torch.float32)
-   dval = torch.tensor(dval, dtype=torch.float32)
-   lval = torch.tensor(lval, dtype=torch.float32)
+def train(dataloader, model, loss_fn, optimizer, device):
+    size = len(dataloader.dataset)
+    model.train()
+    for batch, (X, y) in enumerate(dataloader):
+        X, y = X.to(device), y.to(device)
+        pred = model(X)
+        loss = loss_fn(pred, y)
 
-   metrics = {"train_loss": [], "val_loss": [], "train_accuracy": [], "val_accuracy": []}
-   for epoch in range(num_epochs):
-      
-      # performs one step of backpropagation
-      model.train()
-      optimizer.zero_grad()
-      outputs = model(dtrain)
-      loss = criterion(outputs.squeeze(), ltrain)
-      loss.backward()
-      optimizer.step()
-      
-      # evaluates the model on training data
-      train_loss = loss.item()
-      predictions = outputs.argmax(dim=1)
-      correct = (predictions == ltrain).sum().item()
-      train_accuracy = correct / ltrain.size(0)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
 
-      # evaluates the model on validation data
-      model.eval()
-      with torch.no_grad():
-         val_outputs = model(dval)
-         val_loss = criterion(val_outputs.squeeze(), lval).item()
-         val_predictions = val_outputs.argmax(dim=1)
-         val_correct = (val_predictions == lval).sum().item()
-         val_accuracy = val_correct / lval.size(0)
+        if batch % 100 == 0:
+            loss, current = loss.item(), (batch + 1) * len(X)
+            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
-      metrics["train_loss"].append(train_loss)
-      metrics["val_loss"].append(val_loss)
-      metrics["train_accuracy"].append(train_accuracy)
-      metrics["val_accuracy"].append(val_accuracy)
+def test(dataloader, model, loss_fn, device):
+    size = len(dataloader.dataset)
+    num_batches = len(dataloader)
+    model.eval()
+    test_loss, correct = 0, 0
+    with torch.no_grad():
+        for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
+            pred = model(X)
+            test_loss += loss_fn(pred, y).item()
+            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+    test_loss /= num_batches
+    correct /= size
+    print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
-      if (epoch+1) % 10 == 0:
-         print(f'Epoch [{epoch+1}/{num_epochs}], Train Accuracy: {train_accuracy:.4f}, Val Accuracy: {val_accuracy:.4f}')
-      
-      return pd.DataFrame(metrics)
+def train_loop(model, loss_fm, optimizer, training_dataloader, test_dataloader, num_epochs, device):
+    for epoch in range(num_epochs):
+        print(f"Epoch {epoch+1}\n-------------------------------")
+        train(training_dataloader, model, loss_fm, optimizer, device)
+        test(test_dataloader, model, loss_fm, device)
+    print("Done!")
+    return model
+
 def main(arguments):
       # model parameters
       input_size = 2
       output_size = 199
       hidden_size = arguments.hidden_size
-   
-      model = simpleNN(input_size, hidden_size, output_size)
-      criterion = nn.MSELoss()
+
+
+      device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+      model = simpleNN(input_size, hidden_size, output_size, device)
+      criterion = nn.CrossEntropyLoss()
       optimizer = optim.Adam(model.parameters(), lr=arguments.learning_rate, weight_decay=arguments.decay_rate)
 
       print("Model initialized with the following parameters:")
@@ -89,8 +88,7 @@ def main(arguments):
       print(f"Learning Rate: {arguments.learning_rate}")
 
       data = pd.read_csv(arguments.data_path)
-      metrics = train(model, criterion, optimizer, data, arguments.num_epochs, arguments.training_ratio)
-      metrics.to_csv(arguments.output_file, index=False)
+      model = train_loop(model, criterion, optimizer, data, arguments.num_epochs, arguments.training_ratio)
 
 if __name__ == "__main__":
    parser = argparse.ArgumentParser(description="Train a simple neural network.")
